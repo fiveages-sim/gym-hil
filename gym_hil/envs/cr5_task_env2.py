@@ -27,8 +27,8 @@ class CR5TaskGymEnv(RealCR5PickCubeGymEnv):
         *args,
         target_pos: Optional[np.ndarray] = None,
         target_orientation: Optional[Dict[str, float]] = None,
-        crop: Optional[Tuple[int, int, int, int]] = (500, 200, 750, 400),
-        out_image_size: int = 128,
+        crop: Optional[Tuple[int, int, int, int]] = None,
+        out_image_size: Optional[int] = None,
         image_obs: bool = True,
         **kwargs,
     ):
@@ -37,23 +37,30 @@ class CR5TaskGymEnv(RealCR5PickCubeGymEnv):
         Args:
             target_pos: 目标位置 [x, y, z]，默认为 TARGET_POS 中的位置
             target_orientation: 目标旋转字典 {'x', 'y', 'z', 'w'}，默认为 TARGET_POS 中的旋转
-            crop: 图像裁剪区域 (x, y, w, h)，先裁剪后再缩放到 out_image_size×out_image_size
-            out_image_size: 输出图像边长，默认 128
+            crop: 图像裁剪区域 (x, y, w, h)，先裁剪后再缩放
+            out_image_size: 输出图像边长，None 表示保持相机输出分辨率
             image_obs: 是否启用图像观测，默认 True
             *args, **kwargs: 传递给父类的参数
         """
-        # 调用父类初始化，固定输出分辨率为 out_image_size × out_image_size
-        super().__init__(
-            *args,
-            image_obs=image_obs,
-            image_height=out_image_size,
-            image_width=out_image_size,
-            **kwargs,
-        )
+        # 调用父类初始化，允许保持相机原始分辨率
+        if out_image_size is None:
+            super().__init__(
+                *args,
+                image_obs=image_obs,
+                **kwargs,
+            )
+        else:
+            super().__init__(
+                *args,
+                image_obs=image_obs,
+                image_height=out_image_size,
+                image_width=out_image_size,
+                **kwargs,
+            )
 
         # 裁剪配置
         self.crop = tuple(crop) if crop is not None else None  # (x, y, w, h)
-        self.out_image_size = int(out_image_size)
+        self.out_image_size = int(out_image_size) if out_image_size is not None else None
 
         # 设置预定义的目标位置和旋转
         if target_pos is None:
@@ -196,12 +203,18 @@ class CR5TaskGymEnv(RealCR5PickCubeGymEnv):
             if wrist_right_view is None:
                 wrist_right_view = obs.get(self.wrist_right_camera_name)
 
+        target_height = self.image_height
+        target_width = self.image_width
+        if self.out_image_size is not None:
+            target_height = self.out_image_size
+            target_width = self.out_image_size
+
         if front_view is None:
-            front_view = np.zeros((self.out_image_size, self.out_image_size, 3), dtype=np.uint8)
+            front_view = np.zeros((target_height, target_width, 3), dtype=np.uint8)
         if wrist_left_view is None:
-            wrist_left_view = np.zeros((self.out_image_size, self.out_image_size, 3), dtype=np.uint8)
+            wrist_left_view = np.zeros((target_height, target_width, 3), dtype=np.uint8)
         if self._use_right_wrist_camera and wrist_right_view is None:
-            wrist_right_view = np.zeros((self.out_image_size, self.out_image_size, 3), dtype=np.uint8)
+            wrist_right_view = np.zeros((target_height, target_width, 3), dtype=np.uint8)
 
         # 执行裁剪 (x, y, w, h)
         if self.crop is not None:
@@ -220,14 +233,14 @@ class CR5TaskGymEnv(RealCR5PickCubeGymEnv):
             front_view = safe_crop(front_view)
             # wrist_view = safe_crop(wrist_view)
 
-        # 裁剪后再缩放到 out_image_size × out_image_size
-        out_sz = (self.out_image_size, self.out_image_size)
-        if front_view.shape[1] != self.out_image_size or front_view.shape[0] != self.out_image_size:
+        # 裁剪后再缩放到目标尺寸
+        out_sz = (target_width, target_height)
+        if front_view.shape[1] != target_width or front_view.shape[0] != target_height:
             front_view = cv2.resize(front_view, out_sz)
-        if wrist_left_view.shape[1] != self.out_image_size or wrist_left_view.shape[0] != self.out_image_size:
+        if wrist_left_view.shape[1] != target_width or wrist_left_view.shape[0] != target_height:
             wrist_left_view = cv2.resize(wrist_left_view, out_sz)
         if self._use_right_wrist_camera and wrist_right_view is not None:
-            if wrist_right_view.shape[1] != self.out_image_size or wrist_right_view.shape[0] != self.out_image_size:
+            if wrist_right_view.shape[1] != target_width or wrist_right_view.shape[0] != target_height:
                 wrist_right_view = cv2.resize(wrist_right_view, out_sz)
 
         if self._use_right_wrist_camera:

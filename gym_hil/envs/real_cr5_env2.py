@@ -86,8 +86,8 @@ class RealRobotGymEnv(gym.Env, ABC):
             image_obs: bool = False,
             reward_type: str = "sparse",
             random_block_position: bool = False,
-            image_height: int = 128,
-            image_width: int = 128,
+            image_height: int = 720,
+            image_width: int = 1280,
     ):
         super().__init__()
 
@@ -321,8 +321,8 @@ class RealCR5PickCubeGymEnv(RealRobotGymEnv):
             image_obs: bool = False,
             reward_type: str = "sparse",
             random_block_position: bool = False,
-            image_height: int = 128,
-            image_width: int = 128,
+            image_height: int = 720,
+            image_width: int = 1280,
             use_right_wrist_camera: Optional[bool] = None,
             ros2_config: Optional[ROS2RobotConfig] = None,
     ):
