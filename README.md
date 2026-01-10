@@ -8,6 +8,7 @@ The `gym-hil` package provides environments designed for human-in-the-loop reinf
 
 Currently available environments:
 - **Franka Panda Robot**: A robotic manipulation environment for Franka Panda robot based on MuJoCo
+- **CR5 Robot (ROS2)**: Real-robot environments via ROS2 (supports dual-arm teleoperation)
 
 **What is Human-In-the-Loop (HIL) RL?**
 
@@ -79,6 +80,16 @@ env.close()
 imageio.mimsave("franka_render_test.mp4", frames, fps=20)
 ```
 
+## CR5 (ROS2) Quick Start
+
+This requires `lerobot_robot_ros2` and `lerobot_camera_ros2` installed in the same Python environment, plus a running ROS2 system.
+
+```bash
+python examples/test_cr5_teleoperation2.py
+```
+
+Dual-arm control: press **B** to toggle the active arm, and hold **RB** to intervene with the gamepad.
+
 ## Available Environments
 
 ### Franka Panda Robot Environments
@@ -86,6 +97,11 @@ imageio.mimsave("franka_render_test.mp4", frames, fps=20)
 - **PandaPickCubeBase-v0**: The core environment with the Franka arm and a cube to pick up.
 - **PandaPickCubeGamepad-v0**: Includes gamepad control for teleoperation.
 - **PandaPickCubeKeyboard-v0**: Includes keyboard control for teleoperation.
+
+### CR5 ROS2 Environments
+
+- **RealCR5PickCube-v0**: Real CR5 robot environment using ROS2 interfaces.
+- **CR5Task-v0**: Task-specific wrapper over RealCR5PickCubeGymEnv (ROS2).
 
 ## Teleoperation
 
@@ -96,6 +112,12 @@ python examples/test_teleoperation.py
 ```
 
 To run the teleoperation with keyboard you can use the option `--use-keyboard`.
+
+For CR5 ROS2 teleoperation, run:
+
+```bash
+python examples/test_cr5_teleoperation2.py
+```
 
 ### Human-in-the-Loop Wrappers
 
@@ -133,6 +155,7 @@ The default controls are:
 
 - Left analog stick: Move in X-Y plane
 - Right analog stick (vertical): Move in Z axis
+- B button: Toggle active arm (dual-arm mode)
 - RB button: Toggle intervention mode
 - LT button: Close gripper
 - RT button: Open gripper

@@ -17,10 +17,10 @@
 from gym_hil.envs.panda_arrange_boxes_gym_env import PandaArrangeBoxesGymEnv
 from gym_hil.envs.panda_pick_gym_env import PandaPickCubeGymEnv
 
-# Try to import RealCR5PickCubeGymEnv, but make it optional
+# Try to import ROS2 CR5 environments (env2), but make it optional
 try:
-    from gym_hil.envs.real_cr5_env import RealCR5PickCubeGymEnv
-    from gym_hil.envs.cr5_task_env import CR5TaskGymEnv
+    from gym_hil.envs.real_cr5_env2 import RealCR5PickCubeGymEnv
+    from gym_hil.envs.cr5_task_env2 import CR5TaskGymEnv
     __all__ = ["PandaPickCubeGymEnv", "PandaArrangeBoxesGymEnv", "RealCR5PickCubeGymEnv", "CR5TaskGymEnv"]
 except ImportError:
     # If dependencies are not available, CR5 environments won't be available

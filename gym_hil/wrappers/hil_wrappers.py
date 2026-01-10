@@ -55,6 +55,12 @@ class EEActionWrapper(gym.ActionWrapper):
         super().__init__(env)
         self.ee_action_step_size = ee_action_step_size
         self.use_gripper = use_gripper
+        self._is_dual = (
+            hasattr(env.action_space, "shape")
+            and env.action_space.shape
+            and env.action_space.shape[0] > 7
+            and env.action_space.shape[0] % 2 == 0
+        )
 
         self._ee_step_size = np.array(
             [
@@ -67,8 +73,6 @@ class EEActionWrapper(gym.ActionWrapper):
             ]
         )
         num_actions = 6
-
-        # Initialize action space bounds for the non-gripper case
         action_space_bounds_min = -np.ones(num_actions)
         action_space_bounds_max = np.ones(num_actions)
 
@@ -76,6 +80,11 @@ class EEActionWrapper(gym.ActionWrapper):
             action_space_bounds_min = np.concatenate([action_space_bounds_min, [0.0]])
             action_space_bounds_max = np.concatenate([action_space_bounds_max, [2.0]])
             num_actions += 1
+
+        if self._is_dual:
+            action_space_bounds_min = np.tile(action_space_bounds_min, 2)
+            action_space_bounds_max = np.tile(action_space_bounds_max, 2)
+            num_actions *= 2
 
         ee_action_space = gym.spaces.Box(
             low=action_space_bounds_min,
@@ -92,25 +101,27 @@ class EEActionWrapper(gym.ActionWrapper):
         For the moment we only control the x, y, z, gripper
         Now supports rotation control if action has 6 dimensions
         """
+        def _map_single_arm(single_action):
+            action_xyz = single_action[:3] * self._ee_step_size
+            if len(single_action) >= 6:
+                rotation_step_size = 0.1
+                actions_orn = single_action[3:6] * rotation_step_size
+            else:
+                actions_orn = np.zeros(3)
 
-        # action between -1 and 1, scale to step_size
-        action_xyz = action[:3] * self._ee_step_size
-        
-        # Check if action includes rotation (6D or 7D with gripper)
-        if len(action) >= 6:
-            # Rotation step size (in radians)
-            rotation_step_size = 0.1
-            actions_orn = action[3:6] * rotation_step_size
-        else:
-            # No rotation control
-            actions_orn = np.zeros(3)
-        gripper_open_command = [0.0]
-        if self.use_gripper:
-            # NOTE: Normalize gripper action from [0, 2] -> [-1, 1]
-            gripper_open_command = [action[-1] - 1.0]
+            gripper_open_command = [0.0]
+            if self.use_gripper:
+                gripper_open_command = [single_action[-1] - 1.0]
 
-        action = np.concatenate([action_xyz, actions_orn, gripper_open_command])
-        return action
+            return np.concatenate([action_xyz, actions_orn, gripper_open_command])
+
+        if self._is_dual and len(action) % 2 == 0:
+            half = len(action) // 2
+            left_action = _map_single_arm(action[:half])
+            right_action = _map_single_arm(action[half:])
+            return np.concatenate([left_action, right_action])
+
+        return _map_single_arm(action)
 
 
 class InputsControlWrapper(gym.Wrapper):
@@ -179,6 +190,9 @@ class InputsControlWrapper(gym.Wrapper):
         self.auto_reset = auto_reset
         self.use_gripper = use_gripper
         self.input_threshold = input_threshold
+        self._last_gripper_action_left = 1.0
+        self._last_gripper_action_right = 1.0
+        self._last_dual_action = None
         self.controller.start()
 
     def get_gamepad_action(self):
@@ -207,13 +221,27 @@ class InputsControlWrapper(gym.Wrapper):
         intervention_is_active = self.controller.should_intervene()
 
         if self.use_gripper:
+            active_arm = self.controller.get_active_arm()
             gripper_command = self.controller.gripper_command()
             if gripper_command == "open":
-                gamepad_action = np.concatenate([gamepad_action, [2.0]])
+                gripper_value = 2.0
+                if active_arm == "right":
+                    self._last_gripper_action_right = gripper_value
+                else:
+                    self._last_gripper_action_left = gripper_value
             elif gripper_command == "close":
-                gamepad_action = np.concatenate([gamepad_action, [0.0]])
+                gripper_value = 0.0
+                if active_arm == "right":
+                    self._last_gripper_action_right = gripper_value
+                else:
+                    self._last_gripper_action_left = gripper_value
             else:
-                gamepad_action = np.concatenate([gamepad_action, [1.0]])
+                gripper_value = (
+                    self._last_gripper_action_right
+                    if active_arm == "right"
+                    else self._last_gripper_action_left
+                )
+            gamepad_action = np.concatenate([gamepad_action, [gripper_value]])
 
         # Check episode ending buttons
         # We'll rely on controller.get_episode_end_status() which returns "success", "failure", or None
@@ -254,7 +282,54 @@ class InputsControlWrapper(gym.Wrapper):
             logging.info(f"Episode manually ended: {'SUCCESS' if success else 'FAILURE'}")
 
         if is_intervention:
-            action = gamepad_action
+            gamepad_action = np.asarray(gamepad_action, dtype=np.float32)
+            if isinstance(action, np.ndarray):
+                action_size = action.size
+            else:
+                action_size = len(action)
+
+            if action_size == gamepad_action.size:
+                action = gamepad_action
+            elif action_size == gamepad_action.size * 2:
+                base_action = self._last_dual_action
+                if base_action is None or base_action.size != action_size:
+                    base_action = np.asarray(action, dtype=gamepad_action.dtype)
+                    if base_action.size != action_size:
+                        base_action = np.zeros(action_size, dtype=gamepad_action.dtype)
+                        if self.use_gripper and gamepad_action.size > 0:
+                            base_action[gamepad_action.size - 1] = 1.0
+                            base_action[-1] = 1.0
+                action = base_action.copy()
+                if self.controller.get_active_arm() == "right":
+                    action[gamepad_action.size:] = gamepad_action
+                else:
+                    action[:gamepad_action.size] = gamepad_action
+            else:
+                action = gamepad_action
+        else:
+            if isinstance(action, np.ndarray):
+                action_size = action.size
+            else:
+                action_size = len(action)
+
+            if self.use_gripper and action_size > 0:
+                if isinstance(action, np.ndarray):
+                    action_arr = action
+                else:
+                    action_arr = np.asarray(action, dtype=np.float32)
+                if action_size % 2 == 0:
+                    half = action_size // 2
+                    self._last_gripper_action_left = float(action_arr[half - 1])
+                    self._last_gripper_action_right = float(action_arr[-1])
+                else:
+                    self._last_gripper_action_left = float(action_arr[-1])
+
+        if isinstance(action, np.ndarray):
+            action_arr = action.astype(np.float32, copy=False)
+        else:
+            action_arr = np.asarray(action, dtype=np.float32)
+        if action_arr.size % 2 == 0 and action_arr.size > 0:
+            self._last_dual_action = action_arr.copy()
 
         # Step the environment
         obs, reward, terminated, truncated, info = self.env.step(action)
@@ -267,6 +342,7 @@ class InputsControlWrapper(gym.Wrapper):
             logging.info("Episode ended successfully with reward 1.0")
 
         info["is_intervention"] = is_intervention
+        info["active_arm"] = self.controller.get_active_arm()
         action_intervention = action
 
         info["action_intervention"] = action_intervention

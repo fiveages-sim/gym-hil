@@ -65,6 +65,7 @@ class InputController:
         self.close_gripper_command = False
         self.enable_rotation = False  # Whether rotation control is enabled
         self.rotation_step_size = 0.5  # Step size for rotation in radians
+        self.active_arm = "left"
 
     def start(self):
         """Start the controller and initialize resources."""
@@ -123,6 +124,15 @@ class InputController:
             return "open"
         elif self.close_gripper_command:
             return "close"
+
+    def toggle_active_arm(self):
+        """Toggle the active arm between left and right."""
+        self.active_arm = "right" if self.active_arm == "left" else "left"
+        return self.active_arm
+
+    def get_active_arm(self):
+        """Return the currently active arm."""
+        return self.active_arm
 
 
 class KeyboardController(InputController):
@@ -331,7 +341,7 @@ class GamepadController(InputController):
         else:
             print(f"  {buttons.get('rt', 'RT')} button: Open gripper")
         
-        print(f"  {buttons.get('b', 'B')}/Circle button: Exit")
+        print(f"  {buttons.get('b', 'B')}/Circle button: Toggle active arm")
         print(f"  {buttons.get('y', 'Y')}/Triangle button: End episode with SUCCESS")
         print(f"  {buttons.get('a', 'A')}/Cross button: End episode with FAILURE")
         print(f"  {buttons.get('x', 'X')}/Square button: Rerecord episode")
@@ -357,6 +367,7 @@ class GamepadController(InputController):
         y_button = buttons.get("y", 3)  # Default to 3 if not found
         a_button = buttons.get("a", 0)  # Default to 0 if not found (Logitech F310)
         x_button = buttons.get("x", 2)  # Default to 2 if not found (Logitech F310)
+        b_button = buttons.get("b", 1)
         lb_button = buttons.get("lb", 4)  # LB button for speed mode toggle
         rb_button = buttons.get("rb", 5)  # Default to 5 if not found
         
@@ -375,6 +386,9 @@ class GamepadController(InputController):
                     self.episode_end_status = "failure"
                 elif event.button == x_button:
                     self.episode_end_status = "rerecord_episode"
+                elif event.button == b_button:
+                    active_arm = self.toggle_active_arm()
+                    print(f"Active arm switched to: {active_arm}")
                 elif event.button == lb_button:
                     # Toggle speed mode on LB button press
                     self.high_speed_mode = not self.high_speed_mode

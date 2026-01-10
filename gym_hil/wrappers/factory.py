@@ -6,8 +6,8 @@ import gymnasium as gym
 
 from gym_hil.envs.panda_arrange_boxes_gym_env import PandaArrangeBoxesGymEnv
 from gym_hil.envs.panda_pick_gym_env import PandaPickCubeGymEnv
-from gym_hil.envs.real_cr5_env import RealCR5PickCubeGymEnv
-from gym_hil.envs.cr5_task_env import CR5TaskGymEnv
+from gym_hil.envs.real_cr5_env2 import RealCR5PickCubeGymEnv
+from gym_hil.envs.cr5_task_env2 import CR5TaskGymEnv
 
 from gym_hil.wrappers.hil_wrappers import (
     DEFAULT_EE_STEP_SIZE,
