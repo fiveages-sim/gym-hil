@@ -19,17 +19,19 @@ from lerobot_robot_ros2 import (
         "/home/king/lerobot_ros2/lerobot_camera_ros2",
         "/home/king/lerobot_ros2/ros2_robot_interface"
     ],
-3、左手：  frame_id: arm_base
+3、左手：    
+ frame_id: arm_base
 pose:
   position:
-    x: 0.30673965678961007
-    y: 0.35968246428941925
-    z: 0.08212969481357457
+    x: 0.2800322399789554
+    y: 0.3892631078601045
+    z: 0.09283579967067873
   orientation:
-    x: 0.7121341303333685
-    y: -0.7015625536068263
-    z: -0.008716181911395629
-    w: 0.02447431232728341
+    x: 0.9989084807003015
+    y: -0.0010564602042880695
+    z: -0.039965195736566296
+    w: -0.02415603871892638
+
 4、右手：  frame_id: arm_base
 pose:
   position:
