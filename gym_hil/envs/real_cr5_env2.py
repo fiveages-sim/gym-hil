@@ -73,6 +73,32 @@ _WRIST_RIGHT_CAMERA_NAME = "right_wrist_camera"
 _WRIST_RIGHT_CAMERA_TOPIC = "/right_wrist_camera/rgb"
 _WRIST_RIGHT_CAMERA_NODE_NAME = "lerobot_wrist_right_camera"
 _CAMERA_ENCODING = "bgr8"
+_CR5_LEFT_RESET_POSE = {
+    "position": {
+        "x": 0.30673965678961007,
+        "y": 0.35968246428941925,
+        "z": 0.08212969481357457,
+    },
+    "orientation": {
+        "x": 0.7121341303333685,
+        "y": -0.7015625536068263,
+        "z": -0.008716181911395629,
+        "w": 0.02447431232728341,
+    },
+}
+_CR5_RIGHT_RESET_POSE = {
+    "position": {
+        "x": 0.5745993325507479,
+        "y": -0.4706541325030956,
+        "z": 0.22039074993997124,
+    },
+    "orientation": {
+        "x": 0.721232721212558,
+        "y": -0.0010436408015341368,
+        "z": 0.6926895634644121,
+        "w": 0.0018550832024941176,
+    },
+}
 
 
 class RealRobotGymEnv(gym.Env, ABC):
@@ -365,6 +391,8 @@ class RealCR5PickCubeGymEnv(RealRobotGymEnv):
 
         # 初始化机器人连接
         self._initialize_robot()
+        self._reset_simulation_service_name = "/reset_simulation"
+        self._reset_simulation_client = None
 
     def _is_dual_arm_config(self, ros2_interface: Optional[ROS2RobotInterfaceConfig] = None) -> bool:
         interface = ros2_interface
@@ -469,6 +497,59 @@ class RealCR5PickCubeGymEnv(RealRobotGymEnv):
             logging.error(f"Failed to connect to CR5 robot: {e}")
             raise
 
+    def reset_simulation(self, timeout_sec: float = 2.0) -> bool:
+        """Call Isaac-Sim reset service if available."""
+        if self.robot is None:
+            logging.warning("Robot not initialized; cannot reset simulation.")
+            return False
+
+        ros2_interface = self.robot.ros2_interface
+        if not ros2_interface.is_connected:
+            logging.warning("ROS2 interface not connected; cannot reset simulation.")
+            return False
+
+        try:
+            from simulation_interfaces.srv import ResetSimulation
+        except ImportError as exc:
+            logging.warning("ResetSimulation service type not available: %s", exc)
+            return False
+
+        node = ros2_interface.robot_node
+        if node is None:
+            logging.warning("ROS2 node not available; cannot reset simulation.")
+            return False
+
+        if self._reset_simulation_client is None:
+            self._reset_simulation_client = node.create_client(
+                ResetSimulation,
+                self._reset_simulation_service_name,
+            )
+
+        client = self._reset_simulation_client
+        if not client.service_is_ready():
+            if not client.wait_for_service(timeout_sec=timeout_sec):
+                logging.warning(
+                    "ResetSimulation service not available at %s",
+                    self._reset_simulation_service_name,
+                )
+                return False
+
+        request = ResetSimulation.Request()
+        future = client.call_async(request)
+        start_time = time.time()
+        while not future.done():
+            if time.time() - start_time > timeout_sec:
+                logging.warning("ResetSimulation service call timed out.")
+                return False
+            time.sleep(0.01)
+
+        if future.exception():
+            logging.warning("ResetSimulation service call failed: %s", future.exception())
+            return False
+
+        logging.info("ResetSimulation service call succeeded.")
+        return True
+
     def _setup_observation_space(self):
         """设置观察空间 - 适配 CR5 机器人"""
         left_joint_count = len(self._left_joint_names)
@@ -507,6 +588,17 @@ class RealCR5PickCubeGymEnv(RealRobotGymEnv):
                     "environment_state": env_box,
                 }
             )
+
+    def reset(self, seed=None, **kwargs) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
+        """重置环境：先重置机械臂姿态，再重置 Isaac-Sim。"""
+        if seed is not None:
+            self.np_random = np.random.RandomState(seed)
+
+        self.reset_simulation()
+        self._reset_robot_to_home()
+
+        obs = self._compute_observation()
+        return obs, {}
 
     def get_gripper_pose(self):
         obs = self.robot.get_observation()
@@ -793,45 +885,66 @@ class RealCR5PickCubeGymEnv(RealRobotGymEnv):
             raise RuntimeError("Robot not initialized")
 
         try:
+            from geometry_msgs.msg import Pose
+
+            left_pose = Pose()
+            left_pose.position.x = _CR5_LEFT_RESET_POSE["position"]["x"]
+            left_pose.position.y = _CR5_LEFT_RESET_POSE["position"]["y"]
+            left_pose.position.z = _CR5_LEFT_RESET_POSE["position"]["z"]
+            left_pose.orientation.x = _CR5_LEFT_RESET_POSE["orientation"]["x"]
+            left_pose.orientation.y = _CR5_LEFT_RESET_POSE["orientation"]["y"]
+            left_pose.orientation.z = _CR5_LEFT_RESET_POSE["orientation"]["z"]
+            left_pose.orientation.w = _CR5_LEFT_RESET_POSE["orientation"]["w"]
+            self.robot.ros2_interface.send_end_effector_target(left_pose)
+
+            if self._dual_arm_enabled and self.robot.config.ros2_interface.right_end_effector_target_topic:
+                right_pose = Pose()
+                right_pose.position.x = _CR5_RIGHT_RESET_POSE["position"]["x"]
+                right_pose.position.y = _CR5_RIGHT_RESET_POSE["position"]["y"]
+                right_pose.position.z = _CR5_RIGHT_RESET_POSE["position"]["z"]
+                right_pose.orientation.x = _CR5_RIGHT_RESET_POSE["orientation"]["x"]
+                right_pose.orientation.y = _CR5_RIGHT_RESET_POSE["orientation"]["y"]
+                right_pose.orientation.z = _CR5_RIGHT_RESET_POSE["orientation"]["z"]
+                right_pose.orientation.w = _CR5_RIGHT_RESET_POSE["orientation"]["w"]
+                self.robot.ros2_interface.send_right_end_effector_target(right_pose)
+
             obs = self.robot.get_observation()
             self._last_position_command = np.array(
                 [
-                    obs.get("end_effector.position.x", 0.0),
-                    obs.get("end_effector.position.y", 0.0),
-                    obs.get("end_effector.position.z", 0.0),
+                    _CR5_LEFT_RESET_POSE["position"]["x"],
+                    _CR5_LEFT_RESET_POSE["position"]["y"],
+                    _CR5_LEFT_RESET_POSE["position"]["z"],
                 ],
                 dtype=np.float32,
             )
             self._last_orientation_command = np.array(
                 [
-                    obs.get("end_effector.orientation.x", 0.0),
-                    obs.get("end_effector.orientation.y", 0.0),
-                    obs.get("end_effector.orientation.z", 0.0),
-                    obs.get("end_effector.orientation.w", 1.0),
+                    _CR5_LEFT_RESET_POSE["orientation"]["x"],
+                    _CR5_LEFT_RESET_POSE["orientation"]["y"],
+                    _CR5_LEFT_RESET_POSE["orientation"]["z"],
+                    _CR5_LEFT_RESET_POSE["orientation"]["w"],
                 ],
                 dtype=np.float32,
             )
 
             if self._dual_arm_enabled and self.robot.config.ros2_interface.right_end_effector_pose_topic:
-                right_pose = self.robot.ros2_interface.get_right_end_effector_pose()
-                if right_pose is not None:
-                    self._last_position_command_right = np.array(
-                        [
-                            right_pose.position.x,
-                            right_pose.position.y,
-                            right_pose.position.z,
-                        ],
-                        dtype=np.float32,
-                    )
-                    self._last_orientation_command_right = np.array(
-                        [
-                            right_pose.orientation.x,
-                            right_pose.orientation.y,
-                            right_pose.orientation.z,
-                            right_pose.orientation.w,
-                        ],
-                        dtype=np.float32,
-                    )
+                self._last_position_command_right = np.array(
+                    [
+                        _CR5_RIGHT_RESET_POSE["position"]["x"],
+                        _CR5_RIGHT_RESET_POSE["position"]["y"],
+                        _CR5_RIGHT_RESET_POSE["position"]["z"],
+                    ],
+                    dtype=np.float32,
+                )
+                self._last_orientation_command_right = np.array(
+                    [
+                        _CR5_RIGHT_RESET_POSE["orientation"]["x"],
+                        _CR5_RIGHT_RESET_POSE["orientation"]["y"],
+                        _CR5_RIGHT_RESET_POSE["orientation"]["z"],
+                        _CR5_RIGHT_RESET_POSE["orientation"]["w"],
+                    ],
+                    dtype=np.float32,
+                )
 
         except Exception as e:
             logging.error(f"Failed to reset robot to home: {e}")

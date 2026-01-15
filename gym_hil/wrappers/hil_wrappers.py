@@ -143,6 +143,7 @@ class InputsControlWrapper(gym.Wrapper):
         input_threshold=0.001,
         use_gamepad=True,
         controller_config_path=None,
+        lock_z_on_xy=True,
     ):
         """
         Initialize the inputs controller wrapper.
@@ -157,6 +158,7 @@ class InputsControlWrapper(gym.Wrapper):
             input_threshold: Minimum movement delta to consider as active input
             use_gamepad: Whether to use gamepad or keyboard control
             controller_config_path: Path to the controller configuration JSON file
+            lock_z_on_xy: Whether to lock Z movement when X/Y translation is active
         """
         super().__init__(env)
         from gym_hil.wrappers.intervention_utils import (
@@ -190,6 +192,7 @@ class InputsControlWrapper(gym.Wrapper):
         self.auto_reset = auto_reset
         self.use_gripper = use_gripper
         self.input_threshold = input_threshold
+        self.lock_z_on_xy = lock_z_on_xy
         self._last_gripper_action_left = 1.0
         self._last_gripper_action_right = 1.0
         self._last_dual_action = None
@@ -211,10 +214,14 @@ class InputsControlWrapper(gym.Wrapper):
         # Handle both 3D and 6D deltas
         if len(deltas) == 6:
             delta_x, delta_y, delta_z, delta_rx, delta_ry, delta_rz = deltas
+            if self.lock_z_on_xy and (delta_x != 0 or delta_y != 0):
+                delta_z = 0.0
             # Create 6D action including rotation
             gamepad_action = np.array([delta_x, delta_y, delta_z, delta_rx, delta_ry, delta_rz], dtype=np.float32)
         else:
             delta_x, delta_y, delta_z = deltas[:3]
+            if self.lock_z_on_xy and (delta_x != 0 or delta_y != 0):
+                delta_z = 0.0
             # Create 3D action for translation only
             gamepad_action = np.array([delta_x, delta_y, delta_z], dtype=np.float32)
 
@@ -337,6 +344,7 @@ class InputsControlWrapper(gym.Wrapper):
         # Add episode ending if requested via gamepad
         terminated = terminated or truncated or terminate_episode
 
+
         if success:
             reward = 1.0
             logging.info("Episode ended successfully with reward 1.0")
@@ -359,6 +367,12 @@ class InputsControlWrapper(gym.Wrapper):
                 info.update(reset_info)
 
         return obs, reward, terminated, truncated, info
+
+    def _maybe_reset_simulation(self) -> None:
+        base_env = self.env.unwrapped if hasattr(self.env, "unwrapped") else self.env
+        reset_fn = getattr(base_env, "reset_simulation", None)
+        if callable(reset_fn):
+            reset_fn()
 
     def reset(self, **kwargs):
         """Reset the environment."""

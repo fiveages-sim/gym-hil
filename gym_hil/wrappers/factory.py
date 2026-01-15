@@ -36,6 +36,7 @@ def wrap_env(
     gripper_penalty: float = -0.02,
     reset_delay_seconds: float = 1.0,
     controller_config_path: str = None,
+    lock_z_on_xy: bool = True,
 ) -> gym.Env:
     """Apply wrappers to an environment based on configuration.
 
@@ -50,6 +51,7 @@ def wrap_env(
         gripper_penalty: Penalty for using the gripper
         reset_delay_seconds: The number of seconds to delay during reset
         controller_config_path: Path to the controller configuration JSON file
+        lock_z_on_xy: Whether to lock Z movement when X/Y translation is active
 
     Returns:
         The wrapped environment
@@ -72,6 +74,7 @@ def wrap_env(
         auto_reset=auto_reset,
         use_gamepad=use_gamepad,
         controller_config_path=controller_config_path,
+        lock_z_on_xy=lock_z_on_xy,
     )
 
     # Apply wrappers in the correct order
@@ -95,6 +98,7 @@ def make_env(
     gripper_penalty: float = -0.02,
     reset_delay_seconds: float = 1.0,
     controller_config_path: str | None = None,
+    lock_z_on_xy: bool = True,
     **kwargs,
 ) -> gym.Env:
     """Create and wrap an environment in a single function.
@@ -110,6 +114,7 @@ def make_env(
         gripper_penalty: Penalty for using the gripper
         reset_delay_seconds: The number of seconds to delay during reset
         controller_config_path: Path to the controller configuration JSON file
+        lock_z_on_xy: Whether to lock Z movement when X/Y translation is active
         **kwargs: Additional arguments to pass to the base environment
 
     Returns:
@@ -138,4 +143,5 @@ def make_env(
         gripper_penalty=gripper_penalty,
         reset_delay_seconds=reset_delay_seconds,
         controller_config_path=controller_config_path,
+        lock_z_on_xy=lock_z_on_xy,
     )

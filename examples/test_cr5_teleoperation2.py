@@ -14,7 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # python examples/test_cr5_teleoperation2.py --two-cameras
-# python examples/test_cr5_teleoperation2.py --step-size 0.1 越大越快
+# python examples/test_cr5_teleoperation2.py --step-size 0.1 越大越快，锁z
+# python examples/test_cr5_teleoperation2.py --step-size 0.1 lock_z_on_xy=False，解锁z轴
 import argparse
 import time
 

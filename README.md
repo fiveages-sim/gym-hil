@@ -116,6 +116,7 @@ To run the teleoperation with keyboard you can use the option `--use-keyboard`.
 For CR5 ROS2 teleoperation, run:
 
 ```bash
+sudo apt install -y ros-jazzy-simulation-interfaces
 python examples/test_cr5_teleoperation2.py
 ```
 
